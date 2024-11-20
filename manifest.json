@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Shopify Autofill Pass",
+  "version": "1.0",
+  "homepage_url": "https://github.com/panoply/shopify-autofill-pass",
+  "description": "Automatically fills and submits Shopify password pages for development preview stores.",
+  "permissions": [
+    "webNavigation",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*/password"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "author": {
+    "email": "n.savvidis@gmx.com"
+  }
+}
