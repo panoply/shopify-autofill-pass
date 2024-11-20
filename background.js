@@ -1,26 +1,27 @@
-// Store the most recent password per tab
-const tabPasswords = new Map();
+// Store the most recent password and original URL per tab
+const tabData = new Map();
 
-// Helper to extract password from URL params
-function getPasswordFromUrl(url) {
+// Helper to extract password and original URL from parameters
+function getPasswordAndUrl(url) {
 
   const params = new URL(url).searchParams;
 
-  return params.get('password') || params.get('p');
+  return {
+    password: params.get('password') || params.get('p'),
+    originalUrl: url.split('?')[0] // Original URL without query params
+  };
 
 }
 
-// Capture password on initial navigation
+// Capture password and original URL on initial navigation
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
   if (details.frameId === 0) {
 
-    const password = getPasswordFromUrl(details.url);
+    const { password, originalUrl } = getPasswordAndUrl(details.url);
 
     if (password) {
-
-      tabPasswords.set(details.tabId, password);
-
+      tabData.set(details.tabId, { password, originalUrl });
     }
 
   }
@@ -29,6 +30,7 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 // Handle completed navigation
 chrome.webNavigation.onCompleted.addListener(async (details) => {
   try {
+
     if (details.frameId !== 0) return; // Only handle main frame
 
     const url = new URL(details.url);
@@ -39,36 +41,49 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
     const poweredBy = response.headers.get('powered-by');
 
     if (poweredBy?.toLowerCase() === 'shopify' && currentPath === '/password') {
-      const password = tabPasswords.get(details.tabId);
+      const tabInfo = tabData.get(details.tabId);
 
-      if (password) {
+      if (tabInfo?.password) {
         // Inject content script with password data
         chrome.scripting.executeScript({
           target: { tabId: details.tabId },
           func: fillAndSubmitPassword,
-          args: [password]
+          args: [tabInfo.password]
         });
-
-        // Clear the password after use
-        tabPasswords.delete(details.tabId);
       }
     }
+
+    // Detect if redirected to the index page
+    if (poweredBy?.toLowerCase() === 'shopify' && currentPath === '/') {
+
+      const tabInfo = tabData.get(details.tabId);
+
+      if (tabInfo?.originalUrl) {
+
+        // Redirect to the original URL
+        chrome.tabs.update(details.tabId, { url: tabInfo.originalUrl });
+        tabData.delete(details.tabId); // Clear data after redirection
+
+      }
+    }
+
   } catch (error) {
+
     console.error('Error:', error);
+
   }
 });
 
 // Clean up when tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
 
-  tabPasswords.delete(tabId);
+  tabData.delete(tabId);
 
 });
 
-
 function fillAndSubmitPassword(password) {
 
-  const passwordSelector = 'form[action="/password"] input[type="password"][id="password"][name="password"]'
+  const passwordSelector = 'form[action="/password"] input[type="password"][id="password"][name="password"]';
   const passwordInput = document.querySelector(passwordSelector);
   const form = document.querySelector('form[action="/password"]');
 
@@ -76,5 +91,4 @@ function fillAndSubmitPassword(password) {
     passwordInput.value = password;
     form.submit();
   }
-
 }
